@@ -3,6 +3,8 @@ from pathlib import Path
 from sqlalchemy import text
 from .database import Base, engine, SessionLocal
 from . import models
+from .pdf_parser import extract_text_from_pdf
+from .chunker import chunk_text
 
 app = FastAPI(title="AI Knowledge Assistant")
 
@@ -34,20 +36,50 @@ async def upload_document(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
+    pages = extract_text_from_pdf(str(file_path))
+
+    all_chunks = []
+    for page in pages:
+        chunks = chunk_text(page["text"])
+
+        for chunk_index, chunk in enumerate(chunks):
+            all_chunks.append({
+                "page_number": page["page_number"],
+                "chunk_index": chunk_index,
+                "content": chunk
+            })
+      
     db = SessionLocal()
+    try:
+        document = models.Document(
+            filename=file.filename,
+            file_type=file.content_type
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
 
-    document = models.Document(
-        filename=file.filename,
-        file_type=file.content_type
-    )
-    db.add(document)
-    db.commit()
-    db.refresh(document)
-    db.close()
+        for chunk in all_chunks:
+            document_chunk = models.DocumentChunk(
+                document_id=document.id,
+                page_number=chunk["page_number"],
+                chunk_index=chunk["chunk_index"],
+                content=chunk["content"]
+            )
+            db.add(document_chunk)
 
-    return {
-        "id": document.id,
-        "filename": file.filename,
-        "file_type": file.content_type,
-        "message": "Document uploaded successfully"
-    }
+        db.commit()
+
+        # Read ORM values while the database session is still open.
+        return {
+            "id": document.id,
+            "filename": document.filename,
+            "file_type": document.file_type,
+            "pages": len(pages),
+            "message": "Document uploaded and text extracted successfully"
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
