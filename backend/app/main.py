@@ -64,7 +64,8 @@ async def upload_document(file: UploadFile = File(...)):
                 document_id=document.id,
                 page_number=chunk["page_number"],
                 chunk_index=chunk["chunk_index"],
-                content=chunk["content"]
+                content=chunk["content"],
+                embedding=generate_embedding(chunk["content"])
             )
             db.add(document_chunk)
 

@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime
 from .database import Base
+from pgvector.sqlalchemy import Vector
 
 class Document(Base):
     __tablename__ = "documents"
@@ -18,3 +19,4 @@ class DocumentChunk(Base):
     page_number = Column(Integer, nullable=False)
     chunk_index = Column(Integer, nullable=False)
     content = Column(String, nullable=False)
+    embedding = Column(Vector(384), nullable=True)
