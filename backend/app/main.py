@@ -5,6 +5,7 @@ from .database import Base, engine, SessionLocal
 from . import models
 from .pdf_parser import extract_text_from_pdf
 from .chunker import chunk_text
+from .search import search_similar_chunks, search_keyword_chunks, hybrid_search
 
 app = FastAPI(title="AI Knowledge Assistant")
 
@@ -84,3 +85,15 @@ async def upload_document(file: UploadFile = File(...)):
         raise
     finally:
         db.close()
+
+@app.get("/search")
+def search(q: str, top_k: int = 5):
+    return search_similar_chunks(q, top_k)
+
+@app.get("/keyword-search")
+def keyword_search(q: str, top_k: int = 5):
+    return search_keyword_chunks(q, top_k)
+
+@app.get("/hybrid-search")
+def hybrid_search_endpoint(q: str, top_k: int = 5):
+    return hybrid_search(q, top_k)
