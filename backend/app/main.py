@@ -1,11 +1,14 @@
 from fastapi import FastAPI, File, UploadFile
 from pathlib import Path
-from sqlalchemy import text
+from sqlalchemy import select, text
 from .database import Base, engine, SessionLocal
 from . import models
 from .pdf_parser import extract_text_from_pdf
 from .chunker import chunk_text
 from .search import search_similar_chunks, search_keyword_chunks, hybrid_search
+from .embedding import generate_embedding
+from .reranker import rerank
+from .llm import generate_answer
 
 app = FastAPI(title="AI Knowledge Assistant")
 
@@ -86,14 +89,79 @@ async def upload_document(file: UploadFile = File(...)):
     finally:
         db.close()
 
-@app.get("/search")
-def search(q: str, top_k: int = 5):
-    return search_similar_chunks(q, top_k)
+# @app.get("/search")
+# def search(q: str, top_k: int = 5):
+#     return search_similar_chunks(q, top_k)
 
-@app.get("/keyword-search")
-def keyword_search(q: str, top_k: int = 5):
-    return search_keyword_chunks(q, top_k)
+# @app.get("/keyword-search")
+# def keyword_search(q: str, top_k: int = 5):
+#     return search_keyword_chunks(q, top_k)
 
-@app.get("/hybrid-search")
-def hybrid_search_endpoint(q: str, top_k: int = 5):
-    return hybrid_search(q, top_k)
+# @app.get("/hybrid-search")
+# def hybrid_search_endpoint(q: str, top_k: int = 5):
+#     return hybrid_search(q, top_k)
+
+
+@app.get("/ask")
+def ask(q: str):
+    # Step 1: Retrieve candidate chunks
+    candidates = hybrid_search(q, top_k=10)
+
+    # Step 2: Rerank the candidates
+    results = rerank(q, candidates, top_k=5)
+
+    # Step 3: Get document filenames
+    db = SessionLocal()
+
+    try:
+        document_ids = [result["document_id"] for result in results]
+
+        documents = db.execute(
+            select(models.Document).where(
+                models.Document.id.in_(document_ids)
+            )
+        ).scalars().all()
+
+        document_map = {
+            document.id: document.filename
+            for document in documents
+        }
+
+    finally:
+        db.close()
+
+    # Step 4: Build context for Gemini
+    context_parts = []
+
+    for result in results:
+        filename = document_map.get(
+            result["document_id"],
+            "Unknown document"
+        )
+
+        context_parts.append(
+            f"Source: {filename}, Page {result['page_number']}\n"
+            f"{result['content']}"
+        )
+
+    context = "\n\n".join(context_parts)
+
+    # Step 5: Generate answer
+    answer = generate_answer(q, context)
+
+    # Step 6: Return answer + useful citations
+    return {
+        "question": q,
+        "answer": answer,
+        "sources": [
+            {
+                "filename": document_map.get(
+                    result["document_id"],
+                    "Unknown document"
+                ),
+                "page_number": result["page_number"],
+                "chunk_id": result["chunk_id"]
+            }
+            for result in results
+        ]
+    }
