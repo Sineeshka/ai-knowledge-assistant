@@ -9,8 +9,20 @@ from .search import search_similar_chunks, search_keyword_chunks, hybrid_search
 from .embedding import generate_embedding
 from .reranker import rerank
 from .llm import generate_answer
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="AI Knowledge Assistant")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -89,18 +101,6 @@ async def upload_document(file: UploadFile = File(...)):
     finally:
         db.close()
 
-# @app.get("/search")
-# def search(q: str, top_k: int = 5):
-#     return search_similar_chunks(q, top_k)
-
-# @app.get("/keyword-search")
-# def keyword_search(q: str, top_k: int = 5):
-#     return search_keyword_chunks(q, top_k)
-
-# @app.get("/hybrid-search")
-# def hybrid_search_endpoint(q: str, top_k: int = 5):
-#     return hybrid_search(q, top_k)
-
 
 @app.get("/ask")
 def ask(q: str):
@@ -149,6 +149,13 @@ def ask(q: str):
     # Step 5: Generate answer
     answer = generate_answer(q, context)
 
+    if "I couldn't find the answer in the provided documents." in answer:
+        return {
+            "question": q,
+            "answer": answer,
+            "sources": []
+        }
+    
     # Step 6: Return answer + useful citations
     return {
         "question": q,

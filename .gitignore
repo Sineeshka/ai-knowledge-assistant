@@ -13,6 +13,7 @@ __pycache__/
 
 # User-uploaded documents
 backend/uploads/
+backend/test.py
 
 # Local editor settings
 .vscode/
