@@ -1,4 +1,4 @@
-# ai-knowledge-assistant# AI Knowledge Assistant
+# AI Knowledge Assistant
 
 An AI-powered document question-answering system that allows users to upload documents and retrieve relevant information using hybrid search and reranking.
 
