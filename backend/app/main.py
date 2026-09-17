@@ -1,4 +1,6 @@
-from fastapi import FastAPI, File, UploadFile
+import os
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pathlib import Path
 from sqlalchemy import select, text
 from .database import Base, engine, SessionLocal
@@ -6,7 +8,7 @@ from . import models
 from .pdf_parser import extract_text_from_pdf
 from .chunker import chunk_text
 from .search import search_similar_chunks, search_keyword_chunks, hybrid_search
-from .embedding import generate_embedding
+from .embedding import generate_embeddings
 from .reranker import rerank
 from .llm import generate_answer
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +20,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        os.getenv("FRONTEND_URL", ""),
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -43,16 +46,35 @@ def db_test():
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "20")) * 1024 * 1024
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "200"))
 
 
 @app.post("/documents/upload")
 async def upload_document(file: UploadFile = File(...)):
-    file_path = UPLOAD_DIR / file.filename
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    filename = Path(file.filename or "document.pdf").name
+    file_path = UPLOAD_DIR / filename
 
     with open(file_path, "wb") as buffer:
-        buffer.write(await file.read())
+        total_bytes = 0
+        while content := await file.read(1024 * 1024):
+            total_bytes += len(content)
+            if total_bytes > MAX_UPLOAD_BYTES:
+                file_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"PDF must be smaller than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+                )
+            buffer.write(content)
 
-    pages = extract_text_from_pdf(str(file_path))
+    try:
+        pages = extract_text_from_pdf(str(file_path), max_pages=MAX_PDF_PAGES)
+    except ValueError as error:
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=413, detail=str(error)) from error
 
     all_chunks = []
     for page in pages:
@@ -68,22 +90,32 @@ async def upload_document(file: UploadFile = File(...)):
     db = SessionLocal()
     try:
         document = models.Document(
-            filename=file.filename,
+            filename=filename,
             file_type=file.content_type
         )
         db.add(document)
         db.commit()
         db.refresh(document)
 
-        for chunk in all_chunks:
-            document_chunk = models.DocumentChunk(
-                document_id=document.id,
-                page_number=chunk["page_number"],
-                chunk_index=chunk["chunk_index"],
-                content=chunk["content"],
-                embedding=generate_embedding(chunk["content"])
-            )
-            db.add(document_chunk)
+        embedding_batch_size = 50
+        for batch_start in range(0, len(all_chunks), embedding_batch_size):
+            chunk_batch = all_chunks[
+                batch_start:batch_start + embedding_batch_size
+            ]
+            embeddings = generate_embeddings([
+                chunk["content"]
+                for chunk in chunk_batch
+            ])
+
+            for chunk, embedding in zip(chunk_batch, embeddings):
+                document_chunk = models.DocumentChunk(
+                    document_id=document.id,
+                    page_number=chunk["page_number"],
+                    chunk_index=chunk["chunk_index"],
+                    content=chunk["content"],
+                    embedding=embedding
+                )
+                db.add(document_chunk)
 
         db.commit()
 

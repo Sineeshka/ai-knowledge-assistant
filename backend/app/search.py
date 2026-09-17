@@ -5,7 +5,7 @@ from .database import SessionLocal
 
 # Vector search
 def search_similar_chunks(query: str, top_k: int = 5):
-    query_embedding = generate_embedding(query)
+    query_embedding = generate_embedding(query, task_type="RETRIEVAL_QUERY")
 
     db = SessionLocal()
 
