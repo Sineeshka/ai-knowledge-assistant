@@ -1,96 +1,135 @@
 # AI Knowledge Assistant
 
-An AI-powered document question-answering system that allows users to upload documents and retrieve relevant information using hybrid search and reranking.
+An AI-powered document question-answering application that allows users to upload PDF documents and ask questions about their content using natural language.
 
-## Overview
-
-AI Knowledge Assistant processes uploaded PDF documents, extracts and chunks their content, and retrieves relevant information when a user asks a question.
-
-The system combines keyword-based retrieval and vector similarity search, then uses Reciprocal Rank Fusion (RRF) and reranking to improve the relevance of retrieved results.
+The application uses **Retrieval-Augmented Generation (RAG)** to retrieve relevant document content and generate context-aware answers using Google Gemini.
 
 ## Features
 
-- PDF document upload and processing
-- Page-aware text extraction using PyMuPDF
-- Document chunking for efficient retrieval
-- Keyword-based and vector similarity search
-- Hybrid retrieval using Reciprocal Rank Fusion (RRF)
-- Result reranking for improved relevance
-- PostgreSQL database for document and chunk storage
-- pgvector for vector storage and similarity search
-- FastAPI backend
-- React frontend
-- Docker-based PostgreSQL environment
+- Upload and process PDF documents.
+- Extract text using PyMuPDF.
+- Split document text into manageable chunks.
+- Generate embeddings using Gemini.
+- Store document data and embeddings in PostgreSQL with pgvector.
+- Retrieve relevant document content using vector similarity search.
+- Generate answers using Gemini based on retrieved context.
+- React frontend with a FastAPI backend.
 
-## Deploying the backend on a small host
+## Tech Stack
 
-The backend uses Gemini for both answer generation and embeddings, so it does
-not load PyTorch or local transformer models. This keeps the web service small
-enough for low-memory hosts such as Render's free web service.
-
-Create a Render Web Service with:
-
-- Root directory: `backend`
-- Build command: `pip install -r requirements.txt`
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-
-Set these environment variables in the service:
-
-- `GEMINI_API_KEY`
-- `DATABASE_URL` (a PostgreSQL database with the `vector` extension enabled)
-- `FRONTEND_URL` (the deployed frontend URL)
-- `GEMINI_MODEL` (optional, defaults to `gemini-3.6-flash`)
-- `GEMINI_EMBEDDING_MODEL` (optional, defaults to `gemini-embedding-001`)
-
-The embedding provider has changed from the local MiniLM model to Gemini. Any
-existing chunks must be uploaded again, or their embeddings must be regenerated,
-before using vector search. The database column remains 384-dimensional.
+- **Frontend:** React, JavaScript, Vite
+- **Backend:** Python, FastAPI
+- **AI:** Google Gemini API and embeddings
+- **Database:** PostgreSQL, pgvector
+- **PDF Processing:** PyMuPDF
+- **Tools:** Git, GitHub, Docker
+- **Deployment:** Vercel, Render, Supabase
 
 ## Architecture
 
-                    ┌─────────────────┐
-                    │   User uploads  │
-                    │    PDF document │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │    PyMuPDF      │
-                    │  Text Extraction│
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │ Chunking &      │
-                    │ Processing      │
-                    └────────┬────────┘
-                             │
-                             ▼
-                 ┌─────────────────────────┐
-                 │ PostgreSQL + pgvector  │
-                 │ Documents & Chunks      │
-                 └────────────┬────────────┘
-                              │
-                     User Question
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │ Hybrid Retrieval        │
-                 │ Keyword + Vector Search │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │ Reciprocal Rank Fusion  │
-                 │          (RRF)           │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │       Reranking         │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │ Relevant Results│
-                    └─────────────────┘
+```text
+React Frontend
+      |
+      v
+FastAPI Backend
+      |
+      +------> PostgreSQL + pgvector
+      |
+      +------> Gemini API
+```
+
+## Screenshot
+
+![AI Knowledge Assistant](screenshots)
+
+*Document upload and question-answering interface.*
+
+## Getting Started
+
+### Prerequisites
+
+- Python
+- Node.js and npm
+- PostgreSQL with pgvector
+- Google Gemini API key
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Sineeshka/ai-knowledge-assistant.git
+cd ai-knowledge-assistant
+```
+
+### 2. Run the backend
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Create a `backend/.env` file:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+DATABASE_URL=your_postgresql_connection_string
+FRONTEND_URL=http://localhost:5173
+```
+
+Start the API:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+API documentation: `http://localhost:8000/docs`
+
+### 3. Run the frontend
+
+Open a second terminal:
+
+```bash
+cd frontend
+npm install
+```
+
+Create `frontend/.env`:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+Start the frontend:
+
+```bash
+npm run dev
+```
+
+Open the local URL displayed in the terminal, usually `http://localhost:5173`.
+
+## API Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/documents/upload` | Upload and process a PDF |
+| GET | `/ask?q=your_question` | Ask a question about indexed documents |
+
+## Future Improvements
+
+- OCR support for scanned PDFs.
+- Source-page citations in answers.
+- Improved document management.
+- Retrieval evaluation and answer-quality testing.
+
+## Author
+
+**Sineesh K A**  
+B.Tech Computer Science and Engineering, Government Engineering College Thrissur
+
+- [GitHub Profile](https://github.com/Sineeshka)
+- [Project Repository](https://github.com/Sineeshka/ai-knowledge-assistant)
+
+---
+
+*Educational and portfolio project. Free-tier hosting and database services may pause or have usage limitations.*
